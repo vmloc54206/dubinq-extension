@@ -1,48 +1,195 @@
-import cssText from "data-text:~style.css"
 import type { PlasmoCSConfig } from "plasmo"
 
-import { CountButton } from "~features/count-button"
+// Universal Video Translator Content Script
+import { textToSpeech } from "./services/text-to-speech"
+import { universalVideoAPI } from "./services/universal-video-api"
+import { youtubeAPI } from "./services/youtube-api"
+import type { ExtensionMessage } from "./types"
+import { MESSAGE_TYPES, PATTERNS } from "./utils/constants"
+import { storageManager } from "./utils/storage"
 
 export const config: PlasmoCSConfig = {
-  matches: ["<all_urls>"]
+  matches: [
+    "https://www.youtube.com/*",
+    "https://www.netflix.com/*",
+    "https://vimeo.com/*",
+    "https://www.twitch.tv/*",
+    "https://www.facebook.com/*",
+    "https://www.instagram.com/*",
+    "https://www.tiktok.com/*",
+    "https://twitter.com/*",
+    "https://x.com/*",
+    "https://www.bilibili.com/*",
+    "https://www.coursera.org/*",
+    "https://www.udemy.com/*",
+    "https://www.khanacademy.org/*",
+    "https://www.hulu.com/*",
+    "https://www.disneyplus.com/*",
+    "https://www.hbomax.com/*",
+    "https://www.amazon.com/*",
+    "https://prime.amazon.com/*",
+    "https://www.crunchyroll.com/*",
+    "https://www.funimation.com/*",
+    "https://www.dailymotion.com/*",
+    "https://www.ted.com/*",
+    "https://www.linkedin.com/*"
+  ]
 }
 
-/**
- * Generates a style element with adjusted CSS to work correctly within a Shadow DOM.
- *
- * Tailwind CSS relies on `rem` units, which are based on the root font size (typically defined on the <html>
- * or <body> element). However, in a Shadow DOM (as used by Plasmo), there is no native root element, so the
- * rem values would reference the actual page's root font size—often leading to sizing inconsistencies.
- *
- * To address this, we:
- * 1. Replace the `:root` selector with `:host(plasmo-csui)` to properly scope the styles within the Shadow DOM.
- * 2. Convert all `rem` units to pixel values using a fixed base font size, ensuring consistent styling
- *    regardless of the host page's font size.
- */
-export const getStyle = (): HTMLStyleElement => {
-  const baseFontSize = 16
+// Required for Plasmo content scripts
+export {}
 
-  let updatedCssText = cssText.replaceAll(":root", ":host(plasmo-csui)")
-  const remRegex = /([\d.]+)rem/g
-  updatedCssText = updatedCssText.replace(remRegex, (match, remValue) => {
-    const pixelsValue = parseFloat(remValue) * baseFontSize
+class UniversalVideoTranslatorInjector {
+  private currentVideoId: string | null = null
+  private isActive: boolean = false
+  private platform: string = "Unknown"
 
-    return `${pixelsValue}px`
-  })
+  constructor() {
+    this.platform = this.detectPlatform()
+    this.init()
+  }
 
-  const styleElement = document.createElement("style")
+  private detectPlatform(): string {
+    const hostname = window.location.hostname
 
-  styleElement.textContent = updatedCssText
+    if (hostname.includes("youtube.com")) return "YouTube"
+    if (hostname.includes("netflix.com")) return "Netflix"
+    if (hostname.includes("vimeo.com")) return "Vimeo"
+    if (hostname.includes("tiktok.com")) return "TikTok"
+    if (hostname.includes("facebook.com")) return "Facebook"
+    if (hostname.includes("twitter.com") || hostname.includes("x.com"))
+      return "Twitter"
+    if (hostname.includes("bilibili.com")) return "Bilibili"
+    if (hostname.includes("coursera.org")) return "Coursera"
+    if (hostname.includes("twitch.tv")) return "Twitch"
 
-  return styleElement
+    return `Generic (${hostname})`
+  }
+
+  private async init() {
+    // Kiểm tra extension có được enable không
+    const isEnabled = await storageManager.getIsEnabled()
+    if (!isEnabled) {
+      return
+    }
+
+    // Setup message listener
+    this.setupMessageListener()
+
+    // Setup URL change listener
+    this.setupURLChangeListener()
+
+    // Inject nếu đang ở video page
+    if (this.isVideoPage()) {
+      this.onVideoPageLoad()
+    }
+
+    console.log(`${this.platform} Translator injected successfully`)
+  }
+
+  private isVideoPage(): boolean {
+    // Universal video page detection
+    const video = document.querySelector("video")
+    const hasVideo = video !== null
+
+    // Platform-specific checks
+    if (this.platform === "YouTube") {
+      return window.location.pathname === "/watch"
+    }
+
+    // Generic: có video element là video page
+    return hasVideo
+  }
+
+  private getCurrentVideoId(): string | null {
+    // Sử dụng universal API để lấy video info
+    const platform = universalVideoAPI.detectPlatform()
+    if (platform) {
+      return platform.extractVideoId(window.location.href)
+    }
+
+    // Fallback: YouTube pattern
+    const url = window.location.href
+    const match = url.match(PATTERNS.YOUTUBE_VIDEO_ID)
+    return match ? match[1] : null
+  }
+
+  private setupURLChangeListener() {
+    let lastUrl = location.href
+    new MutationObserver(() => {
+      const url = location.href
+      if (url !== lastUrl) {
+        lastUrl = url
+        this.onURLChanged()
+      }
+    }).observe(document, { subtree: true, childList: true })
+  }
+
+  private onURLChanged() {
+    if (this.isVideoPage()) {
+      const videoId = this.getCurrentVideoId()
+      if (videoId !== this.currentVideoId) {
+        this.currentVideoId = videoId
+        this.onVideoPageLoad()
+      }
+    }
+  }
+
+  private onVideoPageLoad() {
+    console.log("Video page loaded:", this.currentVideoId)
+    // Có thể thêm logic khởi tạo ở đây
+  }
+
+  private setupMessageListener() {
+    chrome.runtime.onMessage.addListener(
+      (message: ExtensionMessage, _sender, sendResponse) => {
+        switch (message.type) {
+          case MESSAGE_TYPES.TOGGLE_TRANSLATOR:
+            this.toggleTranslator()
+            sendResponse({ success: true, isActive: this.isActive })
+            break
+
+          case MESSAGE_TYPES.GET_VIDEO_INFO:
+            const videoId = this.getCurrentVideoId()
+            sendResponse({
+              videoId,
+              isVideoPage: this.isVideoPage(),
+              isActive: this.isActive
+            })
+            break
+
+          case "PING" as any:
+            sendResponse({ success: true })
+            break
+
+          default:
+            sendResponse({ success: false, error: "Unknown message type" })
+        }
+      }
+    )
+  }
+
+  private toggleTranslator() {
+    this.isActive = !this.isActive
+    console.log("Translator toggled:", this.isActive)
+
+    if (this.isActive) {
+      this.startTranslation()
+    } else {
+      this.stopTranslation()
+    }
+  }
+
+  private async startTranslation() {
+    console.log("Starting translation...")
+    // Logic để bắt đầu dịch thuật sẽ được implement ở đây
+  }
+
+  private stopTranslation() {
+    console.log("Stopping translation...")
+    textToSpeech.stop()
+  }
 }
 
-const PlasmoOverlay = () => {
-  return (
-    <div className="plasmo-z-50 plasmo-flex plasmo-fixed plasmo-top-32 plasmo-right-8">
-      <CountButton />
-    </div>
-  )
-}
-
-export default PlasmoOverlay
+// Initialize injector
+new UniversalVideoTranslatorInjector()
