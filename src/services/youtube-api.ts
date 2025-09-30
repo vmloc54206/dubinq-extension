@@ -7,13 +7,20 @@ class YouTubeAPIService {
   private apiKey: string = ""
 
   constructor() {
-    // API key sẽ được set từ environment hoặc user input
-    this.apiKey = process.env.YOUTUBE_API_KEY || ""
+    // Load API key từ Plasmo environment
+    this.apiKey = process.env.PLASMO_PUBLIC_YOUTUBE_API_KEY || ""
+
+    if (this.apiKey) {
+      console.log("✅ YouTube API key loaded from environment")
+    } else {
+      console.warn("⚠️ YouTube API key not found in environment")
+    }
   }
 
   // Set API key
   setApiKey(apiKey: string): void {
     this.apiKey = apiKey
+    console.log("✅ YouTube API key set manually")
   }
 
   // Lấy video ID từ URL
@@ -67,35 +74,53 @@ class YouTubeAPIService {
   private getVideoInfoFromDOM(videoId: string): VideoInfo {
     console.log("🔍 YouTube DOM: Extracting video info for:", videoId)
 
-    // Enhanced title selectors
+    // Enhanced title selectors with NEW YouTube layout
     const titleSelectors = [
+      // NEW YouTube layout (2024)
+      "h1.ytd-watch-metadata yt-formatted-string",
+      "yt-formatted-string.ytd-watch-metadata",
+      "#title yt-formatted-string",
+      // OLD YouTube layout
       "h1.ytd-video-primary-info-renderer",
       "h1.style-scope.ytd-video-primary-info-renderer",
       "#title h1",
       ".ytd-video-primary-info-renderer h1",
+      // Generic
       'h1[class*="title"]',
       "h1.title",
+      // Player
       ".ytp-title-link",
       ".ytp-title",
-      'meta[property="og:title"]'
+      // Meta tags (last resort)
+      'meta[property="og:title"]',
+      'meta[name="title"]'
     ]
 
     let title = "Unknown Title"
     for (const selector of titleSelectors) {
-      const element = document.querySelector(selector)
-      if (element?.textContent?.trim()) {
-        title = element.textContent.trim()
-        console.log(`✅ Found title: "${title}" using selector: ${selector}`)
-        break
-      }
-      // Check meta tag
-      if (selector.includes("meta")) {
-        const metaElement = element as HTMLMetaElement
-        if (metaElement?.content?.trim()) {
-          title = metaElement.content.trim()
-          console.log(`✅ Found title from meta: "${title}"`)
-          break
+      try {
+        const element = document.querySelector(selector)
+        if (element) {
+          // Check meta tag
+          if (selector.includes("meta")) {
+            const metaElement = element as HTMLMetaElement
+            if (metaElement?.content?.trim()) {
+              title = metaElement.content.trim()
+              console.log(`✅ Found title from meta: "${title}"`)
+              break
+            }
+          } else {
+            // Regular element
+            const text = element.textContent?.trim()
+            if (text && text !== "Unknown Title" && text.length > 0) {
+              title = text
+              console.log(`✅ Found title: "${title}" using: ${selector}`)
+              break
+            }
+          }
         }
+      } catch (error) {
+        // Ignore errors, try next selector
       }
     }
 
@@ -122,12 +147,16 @@ class YouTubeAPIService {
   private checkSubtitlesFromDOM(): boolean {
     console.log("🔍 YouTube: Enhanced subtitle check")
 
-    // Method 1: Check subtitle/caption buttons
+    // Method 1: Check subtitle/caption buttons (most reliable)
     const subtitleSelectors = [
       ".ytp-subtitles-button",
       ".ytp-caption-button",
-      '[aria-label*="subtitle"]',
-      '[aria-label*="caption"]',
+      'button[aria-label*="Subtitles"]',
+      'button[aria-label*="subtitles"]',
+      'button[aria-label*="Captions"]',
+      'button[aria-label*="captions"]',
+      'button[aria-label*="字幕"]', // Chinese
+      'button[aria-label*="Phụ đề"]', // Vietnamese
       '[data-tooltip-target-id*="subtitle"]',
       '.ytp-menuitem[role="menuitemcheckbox"]',
       '[title*="subtitle"]',
@@ -135,15 +164,33 @@ class YouTubeAPIService {
     ]
 
     for (const selector of subtitleSelectors) {
-      const button = document.querySelector(selector)
-      if (button) {
-        console.log(`✅ Found subtitle button: ${selector}`)
-        // Check if button is active/enabled
-        const isActive =
-          button.classList.contains("ytp-button-active") ||
-          button.getAttribute("aria-pressed") === "true"
-        console.log(`Button active state: ${isActive}`)
-        return true // Return true if button exists, regardless of state
+      try {
+        const button = document.querySelector(selector)
+        if (button) {
+          console.log(`✅ Found subtitle button: ${selector}`)
+
+          // Check if button is disabled (means no subtitles available)
+          const isDisabled =
+            button.hasAttribute("disabled") ||
+            button.getAttribute("aria-disabled") === "true" ||
+            button.classList.contains("ytp-button-disabled")
+
+          if (isDisabled) {
+            console.log(`⚠️ Button is disabled, no subtitles available`)
+            continue
+          }
+
+          // Button exists and not disabled = subtitles available
+          const isActive =
+            button.classList.contains("ytp-button-active") ||
+            button.getAttribute("aria-pressed") === "true"
+          console.log(
+            `Button state: ${isActive ? "active" : "inactive"} (subtitles available)`
+          )
+          return true
+        }
+      } catch (error) {
+        // Ignore errors, try next selector
       }
     }
 
@@ -276,33 +323,49 @@ class YouTubeAPIService {
     return hours * 3600 + minutes * 60 + seconds
   }
 
-  // Main method để lấy subtitles (sử dụng fallback methods)
+  // Main method để lấy subtitles (CHỈ DÙNG API)
   async getSubtitlesFromURL(
     videoId: string,
     languageCode: string = "en"
   ): Promise<SubtitleEntry[]> {
     try {
-      console.log("Attempting to get subtitles for:", videoId, languageCode)
+      console.log("🔍 Getting subtitles for:", videoId, languageCode)
 
-      // Method 1: Thử lấy từ DOM
-      const domSubtitles = await this.getSubtitlesFromDOM()
-      if (domSubtitles.length > 0) {
-        console.log("Found subtitles from DOM:", domSubtitles.length)
-        return domSubtitles
-      }
+      // ❌ DISABLED: DOM extraction (bị lỗi, không dùng được)
+      // Lý do: DOM extraction không ổn định, subtitle elements thay đổi liên tục
+      // const domSubtitles = await this.getSubtitlesFromDOM()
+      // if (domSubtitles.length > 0) {
+      //   console.log("Found subtitles from DOM:", domSubtitles.length)
+      //   return domSubtitles
+      // }
 
-      // Method 2: Thử lấy từ video tracks
-      const trackSubtitles = await this.extractSubtitlesFromTracks()
-      if (trackSubtitles.length > 0) {
-        console.log("Found subtitles from tracks:", trackSubtitles.length)
-        return trackSubtitles
+      // ❌ DISABLED: Video tracks extraction (bị lỗi, không dùng được)
+      // Lý do: TextTracks API không reliable, tracks thường empty hoặc không accessible
+      // const trackSubtitles = await this.extractSubtitlesFromTracks()
+      // if (trackSubtitles.length > 0) {
+      //   console.log("Found subtitles from tracks:", trackSubtitles.length)
+      //   return trackSubtitles
+      // }
+
+      // ✅ TODO: Implement YouTube API caption download
+      // Hiện tại chưa implement getCaptionsList và downloadCaption
+      // Cần implement sau khi có YouTube Data API v3 setup đầy đủ
+      if (this.apiKey) {
+        console.warn(
+          "⚠️ YouTube API caption download chưa implement, dùng mock data"
+        )
+        // TODO: Implement this
+        // const captions = await this.getCaptionsList(videoId)
+        // const subtitles = await this.downloadCaption(caption.id)
+      } else {
+        console.warn("⚠️ YouTube API key not set, using mock data")
       }
 
       // Fallback: tạo subtitle giả để test
-      console.log("No subtitles found, generating mock data")
+      console.log("⚠️ No subtitles found, generating mock data")
       return this.generateMockSubtitles()
     } catch (error) {
-      console.error("Error getting subtitles:", error)
+      console.error("❌ Error getting subtitles:", error)
       return this.generateMockSubtitles()
     }
   }

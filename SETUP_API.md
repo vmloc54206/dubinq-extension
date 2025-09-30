@@ -28,7 +28,7 @@ Extension hiện tại đã có **fallback methods** để hoạt động mà kh
 ### **Bước 1: Tạo Google Cloud Project**
 1. Vào [Google Cloud Console](https://console.cloud.google.com/)
 2. Tạo project mới: "YouTube Translator"
-3. Enable **YouTube Data API v3**
+3. Enable **YouTube Translator**
 
 ### **Bước 2: Tạo API Key**
 1. Vào **APIs & Services** → **Credentials**

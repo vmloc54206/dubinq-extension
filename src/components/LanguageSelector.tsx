@@ -197,7 +197,19 @@ function getLanguageFlag(languageCode: LanguageCode): string {
     es: "🇪🇸",
     ru: "🇷🇺",
     ar: "🇸🇦",
-    hi: "🇮🇳"
+    hi: "🇮🇳",
+    it: "🇮🇹",
+    pt: "🇵🇹",
+    nl: "🇳🇱",
+    sv: "🇸🇪",
+    da: "🇩🇰",
+    no: "🇳🇴",
+    fi: "🇫🇮",
+    pl: "🇵🇱",
+    tr: "🇹🇷",
+    he: "🇮🇱",
+    id: "🇮🇩",
+    ms: "🇲🇾"
   }
 
   return flags[languageCode] || "🌐"

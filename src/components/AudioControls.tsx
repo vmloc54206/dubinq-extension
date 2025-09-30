@@ -3,7 +3,8 @@
 import React, { useEffect, useState } from "react"
 
 import { textToSpeech } from "../services/text-to-speech"
-import type { TTSOptions } from "../types"
+import type { LanguageCode, TTSOptions } from "../types"
+import { LANGUAGE_CODES } from "../types"
 
 interface AudioControlsProps {
   isEnabled: boolean
@@ -25,6 +26,7 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
   const [availableVoices, setAvailableVoices] = useState<
     SpeechSynthesisVoice[]
   >([])
+  const [testLanguage, setTestLanguage] = useState<LanguageCode>("vi")
 
   useEffect(() => {
     // Load available voices
@@ -64,15 +66,12 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
     setAvailableVoices(voices)
   }
 
-  const handlePlay = () => {
+  const handlePlay = async () => {
     if (isPaused) {
       textToSpeech.resume()
     } else {
-      // Test với sample text
-      textToSpeech.speak("Đây là bài kiểm tra giọng nói.", {
-        ...options,
-        language: "vi-VN"
-      })
+      // Test TTS với ngôn ngữ đã chọn
+      await textToSpeech.testTTS(testLanguage)
     }
   }
 
@@ -139,11 +138,29 @@ export const AudioControls: React.FC<AudioControlsProps> = ({
 
       {isEnabled && (
         <>
+          {/* Test Language Selector */}
+          <div className="bg-white rounded-lg p-3 border border-gray-200">
+            <label className="block text-xs font-medium text-gray-700 mb-2">
+              Ngôn ngữ test
+            </label>
+            <select
+              value={testLanguage}
+              onChange={(e) => setTestLanguage(e.target.value as LanguageCode)}
+              className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-black focus:border-transparent">
+              {Object.entries(LANGUAGE_CODES)
+                .filter(([code]) => code !== "auto")
+                .map(([code, name]) => (
+                  <option key={code} value={code}>
+                    {name}
+                  </option>
+                ))}
+            </select>
+          </div>
+
           {/* Playback Controls */}
-          <div className="bg-gradient-to-r from-purple-50/50 to-blue-50/50 backdrop-blur-sm rounded-xl p-4 border border-white/30">
-            <h4 className="text-xs font-bold text-gray-700 mb-3 flex items-center space-x-2">
-              <span className="w-1.5 h-1.5 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full"></span>
-              <span>Điều khiển phát</span>
+          <div className="bg-white rounded-lg p-4 border border-gray-200">
+            <h4 className="text-xs font-medium text-gray-700 mb-3">
+              Điều khiển phát
             </h4>
             <div className="flex items-center space-x-3">
               <button

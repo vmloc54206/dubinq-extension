@@ -14,7 +14,19 @@ export const LANGUAGE_CODES = {
   es: "Español",
   ru: "Русский",
   ar: "العربية",
-  hi: "हिन्दी"
+  hi: "हिन्दी",
+  it: "Italiano",
+  pt: "Português",
+  nl: "Nederlands",
+  sv: "Svenska",
+  da: "Dansk",
+  no: "Norsk",
+  fi: "Suomi",
+  pl: "Polski",
+  tr: "Türkçe",
+  he: "עברית",
+  id: "Bahasa Indonesia",
+  ms: "Bahasa Melayu"
 } as const
 
 export type LanguageCode = keyof typeof LANGUAGE_CODES
